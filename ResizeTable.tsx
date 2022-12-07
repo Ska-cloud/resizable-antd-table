@@ -43,7 +43,7 @@ type tableProps = {
   columns: ColumnsType[],
   size?: 'default' | 'middle' | 'small',
   pagination?: object | false
-  /** 指定哪几列不能改变列宽*/
+  /** 指定哪一列不能改变列宽*/
   forbidResizeColumn?: boolean
 }
 
