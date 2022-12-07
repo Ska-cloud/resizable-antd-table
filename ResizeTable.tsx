@@ -4,7 +4,7 @@ import { ColumnsType } from 'antd/lib/table';
 import { Resizable } from 'react-resizable';
 import './style.css';
 
-/*
+/** @description
   react-resizable props参数类型
 
 type ResizableProps =
@@ -28,23 +28,16 @@ type ResizableProps =
 };
  */
 
-export interface ResizeTableColumnsType extends Array<any>{
-  columns: {
-    forbidResizeColumn?: boolean;
-    width: number;
-    title: string;
-    render?: (text: string, record: any, index: number) => any
-    dataIndex?: string
-  }[]
+export interface ResizeTableColumnsType extends ColumnsType {
+  /* 指定哪一列不能改变列宽*/
+  resizable: false
 }
 
 type tableProps = {
   dataSource: object[] | undefined,
-  columns: ColumnsType[],
+  columns: ResizeTableColumnsType[],
   size?: 'default' | 'middle' | 'small',
   pagination?: object | false
-  /** 指定哪一列不能改变列宽*/
-  forbidResizeColumn?: boolean
 }
 
 type ResizeHandleAxis = 's' | 'w' | 'e' | 'n' | 'sw' | 'nw' | 'se' | 'ne';
@@ -62,16 +55,14 @@ const ResizeableTitle = (props:
                              onResize: Function
                              onResizeStop: Function
                              width: number
-                             index: number
-                             forbidResizeColumn: boolean
+                             resizable: boolean
                            }) => {
   const {
-    index,
     onResize,
     width,
     onResizeStart,
     onResizeStop,
-    forbidResizeColumn,
+    resizable,
     ...restProps
   } = props;
 
@@ -79,7 +70,7 @@ const ResizeableTitle = (props:
     return <th {...restProps} />;
   }
 
-  if (!forbidResizeColumn && forbidResizeColumn !== undefined) {
+  if (!resizable && resizable !== undefined) {
     return <th {...restProps} />;
   }
 
@@ -129,7 +120,6 @@ const ResizeTable = (tableProps: tableProps) => {
   useEffect(() => {
     // 表格内容为异步请求时初始化表格
     setTempColumns(() => tempColumns = tableProps.columns)
-    console.log('columns', tableProps.columns)
   }, [tableProps.columns])
 
   useEffect(() => {
@@ -138,13 +128,12 @@ const ResizeTable = (tableProps: tableProps) => {
     setColumns((tempColumns || []).map((col: ColumnsType, index: number) => (
       {
       ...col,
-      onHeaderCell: (column: { width: number; forbidResizeColumn: boolean }) => ({
+      onHeaderCell: (column: { width: number; resizable: false }) => ({
         width: column.width,
         onResizeStart: startHandleResize(index),
         onResize: handleResize(index),
         onResizeStop: endHandleResize(index),
-        index: index,
-        forbidResizeColumn: column.forbidResizeColumn
+        resizable: column.resizable
       }),
     })))
   }, [tempColumns])
