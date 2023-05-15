@@ -1,22 +1,28 @@
-import { SyntheticEvent, useEffect, useState } from 'react';
+import {
+  SyntheticEvent,
+  memo,
+  useEffect,
+  useRef,
+  useState
+} from 'react';
 import { Table } from 'antd';
-import { ColumnsType } from 'antd/lib/table';
+import { ColumnsType, ColumnType } from 'antd/lib/table';
 import { Resizable } from 'react-resizable';
-import './style.css';
 import { ExpandableConfig } from 'antd/es/table/interface';
 import { SizeType } from 'antd/lib/config-provider/SizeContext';
 import { cloneDeep } from 'lodash';
+import styled from "styled-components";
 
 /** @description
  使用说明：
-        传入的columns必须指定width，类型为number
-  */
+ 传入的columns必须指定width，类型为number
+ */
 
 /** @description
-  react-resizable props参数类型
+ react-resizable props参数类型
 
-type ResizableProps =
-{
+ type ResizableProps =
+ {
   children: React.Element<any>,
   width: number,
   height: number,
@@ -36,12 +42,14 @@ type ResizableProps =
 };
  */
 
-export interface ResizeTableColumnsType<T> extends ColumnsType<any> {
+export interface ResizeColumnType<T> extends ColumnType<any> {
   /* 指定哪一列不能改变列宽*/
   resizable?: boolean;
 }
 
-type tableProps = {
+export declare type ResizeTableColumnsType<T> = ResizeColumnType<any>[];
+
+type TableProps = {
   id: string; // 为可调宽度的表格增加ID号，用于保存表格宽度信息。注意，ID号必须全局唯一，否则可能出现布局错乱的问题
   dataSource: object[] | undefined;
   columns: ResizeTableColumnsType<any>;
@@ -60,15 +68,78 @@ type ResizeCallbackData = {
   handle: ResizeHandleAxis;
 };
 
+const Container = styled.div`
+  position: relative;
+  width: 100%;
+`;
+
+type ResizeLineProps = {
+  left: number;
+  height: number;
+};
+
+const ResizeLine = styled.div.attrs((props: any) => ({
+  style: {
+    left: props.left || 0,
+    height: parseInt(props.height) || 0, // 将字符串转换为数字
+  },
+}))<ResizeLineProps>`
+  height: 100%;
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-left: 2px dashed #d9d9d9;
+  z-index: 9999;
+`;
+
+type StyleProps = {
+  resize?: boolean;
+};
+
+const ResizeTableStyle = styled(Resizable)<StyleProps>`
+    user-select: none;
+    &::before {
+        position: absolute;
+        top: 50%;
+        right: 0;
+        width: 1px;
+        height: 1.6em;
+        background-color: rgba(0,0,0,.06);
+        transform: translateY(-50%);
+        transition: background-color .3s;
+        content: "";
+    }
+
+    &:last-child::before {
+        display: none;
+    }
+
+    .react-resizable {
+        position: relative;
+        background-clip: padding-box;
+    }
+
+    .react-resizable-handle {
+        position: absolute;
+        width: 10px;
+        height: 100%;
+        bottom: 0;
+        right: -5px;
+        cursor: col-resize;
+        background-image:none;
+        z-index: 1;
+    }
+`;
+
 // 调整table表头
 const ResizeableTitle = (props: {
   onResizeStart: (e: SyntheticEvent, data: ResizeCallbackData) => any;
   onResize: (e: SyntheticEvent, data: ResizeCallbackData) => any;
-  onResizeStop: (e: SyntheticEvent, data: ResizeCallbackData) => any;
   width: number;
   resizable: boolean;
+  onResizeStop: (e: SyntheticEvent, data: ResizeCallbackData) => any;
 }) => {
-  const { onResize, width, onResizeStart, onResizeStop, resizable, ...restProps } = props;
+  const { onResize, width, resizable, onResizeStart, onResizeStop, ...restProps } = props;
 
   if (!width) {
     return <th {...restProps} />;
@@ -80,54 +151,41 @@ const ResizeableTitle = (props: {
   }
 
   return (
-    <Resizable
+    <ResizeTableStyle
       width={width}
       height={0}
-      onResizeStart={onResizeStart}
       onResize={onResize}
-      onResizeStop={onResizeStop}
-    >
+      onResizeStart={onResizeStart}
+      onResizeStop={onResizeStop}>
       <th {...restProps} />
-    </Resizable>
+    </ResizeTableStyle>
   );
 };
 
 // 拖拽调整table
-const ResizeTable = (tableProps: tableProps) => {
-  const dataSource = tableProps.dataSource;
-  let [tempColumns, setTempColumns] = useState<any>(tableProps.columns); // 暂态的Columns
-  let [columns, setColumns] = useState<any>([]);
+const ResizeTable = memo((props: TableProps) => {
+  const { columns = [], id, scroll, ...rest } = props;
 
-  const components = {
-    header: {
-      cell: ResizeableTitle,
-    },
-  };
+  const containerRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLDivElement>(null); // 添加 tableRef
+  let [tableColumns, setTableColumns] = useState<any[]>(columns);
 
-  // 拖拽开始的回调
-  const startHandleResize = (index: number) => (e: SyntheticEvent, data: ResizeCallbackData) => {};
-  // 拖拽过程的回调
-  const handleResize = (index: number) => (e: SyntheticEvent, data: ResizeCallbackData) => {
-    let size = data.size;
-    const nextColumns = [...tempColumns];
-    // 拖拽是调整宽度
-    nextColumns[index] = {
-      ...nextColumns[index],
-      width: size.width,
-    };
-    setTempColumns(nextColumns);
-  };
+  const [dashedLineHeight, setDashedLineHeight] = useState<number>(100)
 
-  // 拖拽结束的回调
-  const endHandleResize = (index: number) => (e: SyntheticEvent, data: ResizeCallbackData) => {};
+  const [end, setEnd] = useState(0);
+  const [start, setStart] = useState(0);
+  const [show, setShow] = useState(false);
 
-  const getSavedColumnSize = (id: string) => {
-    if (!id) {
+  const getSavedColumnSize = (id: string): { [key: string]: number } | null => {
+    try {
+      const result = localStorage.getItem(`table_size::${id}`);
+      if (result) {
+        return JSON.parse(result);
+      }
+      return null;
+    } catch (error) {
       return null;
     }
-
-    const result = localStorage.getItem(`table_size::${id}`);
-    return JSON.parse(result as string);
   };
 
   const saveColumnSize = (id: string, columns: any) => {
@@ -135,7 +193,7 @@ const ResizeTable = (tableProps: tableProps) => {
       return;
     }
 
-    const result = {};
+    const result: { [key: string]: number } = {};
     if (columns) {
       for (const column of columns) {
         if (column.title) {
@@ -146,62 +204,107 @@ const ResizeTable = (tableProps: tableProps) => {
 
     if (Object.keys(result).length > 0) {
       localStorage.setItem(`table_size::${id}`, JSON.stringify(result));
+    } else {
+      localStorage.removeItem(`table_size::${id}`);
     }
   };
 
+  // 拖拽开始的回调
+  const startHandleResize = (index: number) => (e: SyntheticEvent, data: ResizeCallbackData) => {
+    // @ts-ignore
+    const { clientX } = e;
+    const dragX =
+      clientX - (containerRef.current as any)?.getBoundingClientRect().x;
+    setStart(dragX);
+    setEnd(dragX);
+    setShow(true);
+  };
+
+  // 拖拽结束的回调
+  const endHandleResize = (index: number) => (e: any, data: ResizeCallbackData) => {
+    const { clientX } = e;
+    const dragX =
+      clientX - (containerRef.current as any)?.getBoundingClientRect().x;
+
+    const nextColumns = [...tableColumns];
+
+    nextColumns[index] = {
+      ...nextColumns[index],
+      width: (data.size.width += dragX - start),
+    };
+    setTableColumns(nextColumns);
+    saveColumnSize(id, nextColumns)
+    setEnd(0);
+    setStart(0);
+    setShow(false);
+  }
+
+  const handleResize = (index: number) => (e: any) => {
+    const { clientX } = e;
+    const dragX = clientX - (containerRef.current as any)?.getBoundingClientRect().x;
+
+    if (dragX < 0) {
+      return
+    }
+
+    if (dragX > (containerRef.current as any)?.getBoundingClientRect().width) {
+      return;
+    }
+
+    setEnd(dragX);
+  }
+
+  // 表格数据初始化
   useEffect(() => {
-    if (tableProps.columns) {
-      let columns = cloneDeep(tableProps.columns);
+    if (columns) {
+      let columnsBackup = cloneDeep(columns);
 
       // 如果之前有保存过宽度，优先使用保存的宽度
-      const saved_column_size = getSavedColumnSize(tableProps.id);
+      const saved_column_size = getSavedColumnSize(id);
       if (saved_column_size) {
-        for (let column of columns) {
+        for (let column of columnsBackup) {
           if (column.title && saved_column_size[column.title as string]) {
             column.width = saved_column_size[column.title as string];
           }
         }
       }
       // 表格内容为异步请求时初始化表格
-      setTempColumns(() => (tempColumns = columns));
-      saveColumnSize(tableProps.id, columns);
+      setTableColumns(columnsBackup);
     }
-  }, [tableProps.columns]);
+  }, [columns]);
 
+  // 监听表格高度变化
   useEffect(() => {
-    // 调整表格列宽度时触发
-    setColumns(
-      () =>
-        (columns = (tempColumns || []).map((col: ColumnsType, index: number) => ({
-          ...col,
-          onHeaderCell: (column: { width: number; resizable: false }) => ({
-            width: column.width,
-            onResizeStart: startHandleResize(index),
-            onResize: handleResize(index),
-            onResizeStop: endHandleResize(index),
-            resizable: column.resizable,
-          }),
-        }))),
-    );
+    const tableHeight: number = (containerRef.current as any)?.querySelector('.ant-table').getBoundingClientRect().height
+    setDashedLineHeight(tableHeight);
+  }, [tableColumns]);
 
-    // 调整时将最终宽度保存下来
-    saveColumnSize(tableProps.id, columns);
-  }, [tempColumns]);
 
   return (
-    <div className="components-table-resizable-column">
+    <Container ref={containerRef}>
       <Table
-        columns={columns}
-        dataSource={dataSource}
-        components={components}
-        size={tableProps.size}
-        pagination={tableProps.pagination}
-        expandable={tableProps.expandable}
-        scroll={tableProps.scroll}
-        rowClassName={tableProps.rowClassName}
+        ref={tableRef}
+        columns={(tableColumns.map((col: ColumnsType, index: number) => ({
+          ...col,
+          onHeaderCell: (column: { width: number; resizable: boolean }) => ({
+            width: column.width,
+            onResize: handleResize(index),
+            resizable: column.resizable,
+            onResizeStart: startHandleResize(index),
+            onResizeStop: endHandleResize(index),
+          }),
+        })) as any)}
+        components={{
+          header: {
+            cell: ResizeableTitle,
+          },
+        }}
+        scroll={scroll || { x: 400 }}
+        {...rest}
       />
-    </div>
+      {show && <ResizeLine left={end || start} height={dashedLineHeight}/>}
+    </Container>
   );
-};
+});
 
 export default ResizeTable;
