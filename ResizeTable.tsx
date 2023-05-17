@@ -299,7 +299,7 @@ const ResizeTable = memo((props: TableProps) => {
             cell: ResizeableTitle,
           },
         }}
-        scroll={scroll || { x: 400 }}
+        scroll={{ x: 'max-content' }}
         {...rest}
       />
       {show && <ResizeLine left={end || start} height={dashedLineHeight}/>}
