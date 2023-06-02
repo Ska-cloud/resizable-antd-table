@@ -1,17 +1,13 @@
-import {
-  SyntheticEvent,
-  memo,
-  useEffect,
-  useRef,
-  useState
-} from 'react';
+import { SyntheticEvent, memo, useEffect, useRef, useState } from 'react';
 import { Table } from 'antd';
 import { ColumnsType, ColumnType } from 'antd/lib/table';
 import { Resizable } from 'react-resizable';
 import { ExpandableConfig } from 'antd/es/table/interface';
 import { SizeType } from 'antd/lib/config-provider/SizeContext';
 import { cloneDeep } from 'lodash';
-import styled from "styled-components";
+import 'react-resizable/css/styles.css';
+import styled from 'styled-components';
+import './style.css'
 
 /** @description
  使用说明：
@@ -97,38 +93,38 @@ type StyleProps = {
 };
 
 const ResizeTableStyle = styled(Resizable)<StyleProps>`
-    user-select: none;
-    &::before {
-        position: absolute;
-        top: 50%;
-        right: 0;
-        width: 1px;
-        height: 1.6em;
-        background-color: rgba(0,0,0,.06);
-        transform: translateY(-50%);
-        transition: background-color .3s;
-        content: "";
-    }
+  user-select: none;
+  &::before {
+    position: absolute;
+    top: 50%;
+    right: 0;
+    width: 1px;
+    height: 1.6em;
+    background-color: rgba(0, 0, 0, 0.06);
+    transform: translateY(-50%);
+    transition: background-color 0.3s;
+    content: '';
+  }
 
-    &:last-child::before {
-        display: none;
-    }
+  &:last-child::before {
+    display: none;
+  }
 
-    .react-resizable {
-        position: relative;
-        background-clip: padding-box;
-    }
+  .react-resizable {
+    position: relative;
+    background-clip: padding-box;
+  }
 
-    .react-resizable-handle {
-        position: absolute;
-        width: 10px;
-        height: 100%;
-        bottom: 0;
-        right: -5px;
-        cursor: col-resize;
-        background-image:none;
-        z-index: 1;
-    }
+  .react-resizable-handle {
+    position: absolute;
+    width: 10px;
+    height: 100%;
+    bottom: 0;
+    right: -5px;
+    cursor: col-resize;
+    background-image: none;
+    z-index: 1;
+  }
 `;
 
 // 调整table表头
@@ -139,7 +135,14 @@ const ResizeableTitle = (props: {
   resizable: boolean;
   onResizeStop: (e: SyntheticEvent, data: ResizeCallbackData) => any;
 }) => {
-  const { onResize, width, resizable, onResizeStart, onResizeStop, ...restProps } = props;
+  const {
+    onResize,
+    width,
+    resizable,
+    onResizeStart,
+    onResizeStop,
+    ...restProps
+  } = props;
 
   if (!width) {
     return <th {...restProps} />;
@@ -156,21 +159,24 @@ const ResizeableTitle = (props: {
       height={0}
       onResize={onResize}
       onResizeStart={onResizeStart}
-      onResizeStop={onResizeStop}>
-      <th {...restProps} />
+      onResizeStop={onResizeStop}
+    >
+      <th {...restProps}/>
     </ResizeTableStyle>
   );
 };
 
 // 拖拽调整table
 const ResizeTable = memo((props: TableProps) => {
+  const MIN_WIDTH = 30;
+
   const { columns = [], id, scroll, ...rest } = props;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLDivElement>(null); // 添加 tableRef
   let [tableColumns, setTableColumns] = useState<any[]>(columns);
 
-  const [dashedLineHeight, setDashedLineHeight] = useState<number>(100)
+  const [dashedLineHeight, setDashedLineHeight] = useState<number>(100);
 
   const [end, setEnd] = useState(0);
   const [start, setStart] = useState(0);
@@ -210,49 +216,78 @@ const ResizeTable = memo((props: TableProps) => {
   };
 
   // 拖拽开始的回调
-  const startHandleResize = (index: number) => (e: SyntheticEvent, data: ResizeCallbackData) => {
-    // @ts-ignore
-    const { clientX } = e;
-    const dragX =
-      clientX - (containerRef.current as any)?.getBoundingClientRect().x;
-    setStart(dragX);
-    setEnd(dragX);
-    setShow(true);
-  };
+  const startHandleResize =
+    (index: number) => (e: any, data: ResizeCallbackData) => {
+      const tableHeight: number = (containerRef.current as any)
+        ?.querySelector('.ant-table')
+        .getBoundingClientRect().height;
+      setDashedLineHeight(tableHeight);
+
+      /**
+       * @param: clientX ==> 鼠标指针在触发事件时相对于浏览器窗口的水平坐标
+       * @param: x ==> 元素左边缘相对于视口左边缘的距离
+       * **/
+      const { clientX } = e;
+      let x = (containerRef.current as HTMLElement)?.getBoundingClientRect().x;
+
+      const dragX = clientX - x;
+
+      setStart(dragX);
+      setEnd(dragX);
+      setShow(true);
+    };
 
   // 拖拽结束的回调
-  const endHandleResize = (index: number) => (e: any, data: ResizeCallbackData) => {
-    const { clientX } = e;
-    const dragX =
-      clientX - (containerRef.current as any)?.getBoundingClientRect().x;
+  const endHandleResize =
+    (index: number) => (e: any, data: ResizeCallbackData) => {
+      /**
+       * @param: clientX ==> 鼠标指针在触发事件时相对于浏览器窗口的水平坐标
+       * @param: x ==> 元素左边缘相对于视口左边缘的距离
+       * **/
+      const { clientX } = e;
+      let x = (containerRef.current as HTMLElement)?.getBoundingClientRect().x;
 
-    const nextColumns = [...tableColumns];
+      const dragX = clientX - x;
 
-    nextColumns[index] = {
-      ...nextColumns[index],
-      width: (data.size.width += dragX - start),
+      const nextColumns = [...tableColumns];
+
+      nextColumns[index] = {
+        ...nextColumns[index],
+        width: Math.max(data.size.width + dragX - start, MIN_WIDTH),
+      };
+
+      setTableColumns(() => (tableColumns = nextColumns));
+      saveColumnSize(id, nextColumns);
+
+      setEnd(0);
+      setStart(0);
+      setShow(false);
     };
-    setTableColumns(nextColumns);
-    saveColumnSize(id, nextColumns)
-    setEnd(0);
-    setStart(0);
-    setShow(false);
-  }
 
   const handleResize = (index: number) => (e: any) => {
+    /**
+     * @param: clientX ==> 鼠标指针在触发事件时相对于浏览器窗口的水平坐标
+     * @param: x ==> 元素左边缘相对于视口左边缘的距离
+     * **/
     const { clientX } = e;
-    const dragX = clientX - (containerRef.current as any)?.getBoundingClientRect().x;
+    let x = (containerRef.current as HTMLElement)?.getBoundingClientRect().x;
+
+    let dragX = clientX - x;
 
     if (dragX < 0) {
-      return
+      dragX = MIN_WIDTH;
     }
 
-    if (dragX > (containerRef.current as any)?.getBoundingClientRect().width) {
-      return;
+    if (
+      dragX >
+      (containerRef.current as HTMLElement)?.getBoundingClientRect().width
+    ) {
+      dragX = (containerRef.current as HTMLElement)?.getBoundingClientRect()
+        .width;
     }
 
     setEnd(dragX);
-  }
+  };
 
   // 表格数据初始化
   useEffect(() => {
@@ -273,27 +308,22 @@ const ResizeTable = memo((props: TableProps) => {
     }
   }, [columns]);
 
-  // 监听表格高度变化
-  useEffect(() => {
-    const tableHeight: number = (containerRef.current as any)?.querySelector('.ant-table').getBoundingClientRect().height
-    setDashedLineHeight(tableHeight);
-  }, [tableColumns]);
-
-
   return (
     <Container ref={containerRef}>
       <Table
         ref={tableRef}
-        columns={(tableColumns.map((col: ColumnsType, index: number) => ({
-          ...col,
-          onHeaderCell: (column: { width: number; resizable: boolean }) => ({
-            width: column.width,
-            onResize: handleResize(index),
-            resizable: column.resizable,
-            onResizeStart: startHandleResize(index),
-            onResizeStop: endHandleResize(index),
-          }),
-        })) as any)}
+        columns={
+          tableColumns.map((col: ColumnsType, index: number) => ({
+            ...col,
+            onHeaderCell: (column: { width: number; resizable: boolean }) => ({
+              width: column.width,
+              onResize: handleResize(index),
+              resizable: column.resizable,
+              onResizeStart: startHandleResize(index),
+              onResizeStop: endHandleResize(index),
+            }),
+          })) as any
+        }
         components={{
           header: {
             cell: ResizeableTitle,
@@ -302,7 +332,7 @@ const ResizeTable = memo((props: TableProps) => {
         scroll={{ x: 'max-content' }}
         {...rest}
       />
-      {show && <ResizeLine left={end || start} height={dashedLineHeight}/>}
+      {show && <ResizeLine left={end} height={dashedLineHeight} />}
     </Container>
   );
 });
